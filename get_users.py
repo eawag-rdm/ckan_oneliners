@@ -43,6 +43,7 @@ def main(args):
                if capac(u['capacity'])]
     users = [ckan.call_action('user_show', data_dict={'id': uid})
              for uid in userids]
+    users = [encode(u) for u in users]
     output(users, args['-f'])
 
 def output(users, fields):
@@ -70,6 +71,14 @@ def output(users, fields):
                 os = mkline(os, i[0], i[1])
         os = os[0:-1]
         print(os)
+
+def encode(d):
+    d_out = {}
+    for k, v in d.iteritems():
+        if isinstance(v, basestring):
+            v = v.encode('utf-8')
+        d_out[k] = v
+    return d_out
 
 if __name__ == '__main__':
     args = docopt(__doc__)
