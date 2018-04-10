@@ -49,16 +49,25 @@ def get_defined_plugins(basedir, host='localhost'):
         setup, err = proc.communicate()
     else:
         setup = open(setuppath, 'r').read()
-    entry_point_pat  = re.compile(r'entry_points\s*=\s*{.*?}', flags = re.DOTALL)
+    entry_point_pat  = re.compile(r'entry_points\s*=\s*{.*?}', flags=re.DOTALL)
+    entry_point_alt_pat = re.compile(r'\[ckan.plugins\](.*?)(\[.*?\]|"""|\'\'\')',
+                                     flags=re.DOTALL)
     plugin_list_pat = re.compile(r'\'ckan.plugins\'\s*:\s*(\[.*?\])',
-                                 flags = re.DOTALL)
-    entry_points = re.search(entry_point_pat, setup).group()
-    pluginlist =  re.search(plugin_list_pat, entry_points).groups(0)[0]
-    pluginstrings = eval(pluginlist)
-    plugins = [x.split('=')[0].strip() for x in pluginstrings]
+                                 flags=re.DOTALL)
+    try:
+        entry_points = re.search(entry_point_pat, setup).group()
+        pluginlist =  re.search(plugin_list_pat, entry_points).groups(0)[0]
+        pluginstrings = eval(pluginlist)
+    except AttributeError:
+        try:
+            plugin_string = re.search(entry_point_alt_pat, setup).groups(0)[0]
+            pluginstrings = [x.strip() for x in plugin_string.split('\n')]
+            pluginstrings = [x for x in pluginstrings
+                             if len(x) > 0 and x[0] != '#']
+        except:
+            return []
+    plugins = [x.split('=')[0].strip() for x in pluginstrings if len(x) > 0]
     return plugins
-
-
 
 def get_srcdirs(host='localhost'):
     '''Returns the list of paths that contain individually versioned codes,
@@ -75,6 +84,7 @@ def get_srcdirs(host='localhost'):
         proc = sp.Popen(cmd.split(), stdout=sp.PIPE)
         dirs, err = proc.communicate()
         dirs = dirs.split('\n')
+        dirs = [d for d in dirs if len(d) > 0]
     return dirs
         
 def get_commit(srcdir, host='localhost'):
@@ -85,16 +95,14 @@ def get_commit(srcdir, host='localhost'):
         commit = proc.communicate()[0].split()[0]
     return commit
 
-
-
-resultset = {
-    'loaded_A': [],
-    'loaded_B': [],
-    'commit_A': [],
-    'commit_B': [],
-    'srcdir': []
-}
-         
+def plugin_src_map(host='localhost'):
+    mapping = {}
+    srcdirs = get_srcdirs(host)
+    for sd in srcdirs:
+        defplugs = get_defined_plugins(sd, host=host)
+        mapping.update(dict(zip(defplugs, len(defplugs)*[sd])))
+    return mapping
+    
 def report(host1, host2='http://localhost:5000'):
     A = get_extensions(host=host1)
     B = get_extensions(host=host2)
@@ -106,24 +114,32 @@ def report(host1, host2='http://localhost:5000'):
     print('\nVersion {}: {}\n'.format(host2, B['version']))
     print('\nPlugins loaded in {}, not in {}:\n{}'.format(host1, host2, onlyA))
     print('\nPlugins loaded in {}, not in {}:\n{}'.format(host2, host1, onlyB))
+    #hostname1 = re.search(r'
+    # CONTINUE HERE
+    mapA = plugin_src_map(host1)
+    mapB = plugin_src_map(host2)
+
+
+    # for p in AandB:
+    #     print(p)
+    #     srcdirA = mapA[p]
+    #     commit = get_commit(srcdirA, host1)
+    #     print(commit)
 
 report('https://data.eawag.ch')
 
           
 
 # basedir = '/home/vonwalha/Ckan/ckan/lib/default/src/ckan/'
-# basedir = '/usr/lib/ckan/default/src/ckan'
-# defplugsl = get_defined_plugins(basedir, host='localhost')
-# defplugsr = get_defined_plugins(basedir, host='eaw-ckan-prod1')
+basedir = '/usr/lib/ckan/default/src/ckan'
+defplugsl = get_defined_plugins(basedir, host='localhost')
+defplugsr = get_defined_plugins(basedir, host='eaw-ckan-prod1')
 
 
 local_srcdirs = get_srcdirs()
+remote_srcdirs = get_srcdirs('eaw-ckan-prod1')
 
-# restrict to one
-lscr = local_srcdirs[1]
-
-commit = get_commit(lscr)
-defplugs = get_defined_plugins(lscr)
+res = plugin_src_map('eaw-ckan-prod1')
 
 
 # NEXT : allow alternative definition of entry_points, as in ckanext-scheming.
