@@ -4,15 +4,23 @@
 """ Assume we are in the CKAN virtualenv.
 
 """
+# ckanbasedir = '/usr/lib/ckan/default/'
+# execfile(os.path.join(ckanbasedir, 'bin/activate_this.py'),
+#          dict(__file__= os.path.join(ckanbasedir, 'bin/activate_this.py')))         
+
+
 import subprocess as sp
+import ckanapi
 import re
 import os.path
+
 
 def get_loaded_plugins(host='localhost',
                        pasterpath='/usr/lib/ckan/default/bin/paster',
                        configpath='/etc/ckan/default/development.ini'):
     '''Returns loaded plugins for <host>.
     Assumes password-less login possible for remote host.
+    THIS IS REDUNDANT. PREFER get_extensions() USING API-CALL
 
     '''
     if host == 'localhost':
@@ -26,6 +34,11 @@ def get_loaded_plugins(host='localhost',
     plugins = re.findall("\n(.*):\n---", out)
     plugins.sort()
     return plugins
+
+def get_extensions(host='http://localhost:5000'):
+    ckan = ckanapi.RemoteCKAN(host)
+    info = ckan.call_action('status_show')
+    return {'version': info['ckan_version'], 'extensions': info['extensions']}
 
 def get_defined_plugins(basedir, host='localhost'):
     "Retrieves list of plugins from setup.py in <basedir>"
@@ -72,11 +85,31 @@ def get_commit(srcdir, host='localhost'):
         commit = proc.communicate()[0].split()[0]
     return commit
 
-        
-# plugins = get_loaded_plugins()
 
-# pluginsr = get_loaded_plugins(host='eaw-ckan-prod1',
-#                               configpath='/etc/ckan/default/production.ini')
+
+resultset = {
+    'loaded_A': [],
+    'loaded_B': [],
+    'commit_A': [],
+    'commit_B': [],
+    'srcdir': []
+}
+         
+def report(host1, host2='http://localhost:5000'):
+    A = get_extensions(host=host1)
+    B = get_extensions(host=host2)
+    
+    AandB = sorted(list(set(A['extensions']) & set(B['extensions'])))
+    onlyA = sorted(list(set(A['extensions']) - set(B['extensions'])))
+    onlyB = sorted(list(set(B['extensions']) - set(A['extensions'])))
+    print('\nVersion {}: {}\n'.format(host1, A['version']))
+    print('\nVersion {}: {}\n'.format(host2, B['version']))
+    print('\nPlugins loaded in {}, not in {}:\n{}'.format(host1, host2, onlyA))
+    print('\nPlugins loaded in {}, not in {}:\n{}'.format(host2, host1, onlyB))
+
+report('https://data.eawag.ch')
+
+          
 
 # basedir = '/home/vonwalha/Ckan/ckan/lib/default/src/ckan/'
 # basedir = '/usr/lib/ckan/default/src/ckan'
