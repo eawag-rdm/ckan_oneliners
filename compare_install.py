@@ -1,19 +1,35 @@
 # _*_ coding: utf-8 _*_
 
 
-""" Assume we are in the CKAN virtualenv.
+"""compare_install.py
+
+Compares set of modules loaded on the development machine with those of
+the deployment server. Also compares the git revison of plugins that are loaded
+by both apps.
+
+TODO: Optionally not only compare revisions of plugins but also of non-plugin
+modules.
+
+Usage: compare_install.py <host1> [<host2>]
+
+Arguments:
+<host1>:   First machine in URL notation, e.g. "https://remote-server.eawag.ch".
+<host2>:   Second machine in URL notation [default: http://localhost:5000]
+    
+Assumption: We are in the CKAN virtualenv and all hosts involved are reachable
+with passwordless ssh.
+
+You might want to modify GITBASE_REMOTE.
 
 """
-# ckanbasedir = '/usr/lib/ckan/default/'
-# execfile(os.path.join(ckanbasedir, 'bin/activate_this.py'),
-#          dict(__file__= os.path.join(ckanbasedir, 'bin/activate_this.py')))         
-
 
 import subprocess as sp
 import ckanapi
 import re
 import os.path
+from docopt import docopt
 
+GITBASE_REMOTE = '/home/ckan/git'
 
 def get_loaded_plugins(host='localhost',
                        pasterpath='/usr/lib/ckan/default/bin/paster',
@@ -89,10 +105,14 @@ def get_srcdirs(host='localhost'):
         
 def get_commit(srcdir, host='localhost'):
     "Returns identifying line for checked-out commit."
-    if host == 'localhost':
-        cmd = 'git -C {} show --pretty=oneline -q'.format(srcdir)
-        proc = sp.Popen(cmd.split(), stdout=sp.PIPE)
-        commit = proc.communicate()[0].split()[0]
+    gitdir = get_gitdirs(srcdir, host)
+    if host != 'localhost':
+        pre ='ssh {} '.format(host)
+    else:
+        pre = ''
+    cmd = pre + 'git -C {} log --pretty=oneline HEAD^1..HEAD'.format(gitdir)
+    proc = sp.Popen(cmd.split(), stdout=sp.PIPE)
+    commit = proc.communicate()[0].split()[0]
     return commit
 
 def plugin_src_map(host='localhost'):
@@ -102,8 +122,22 @@ def plugin_src_map(host='localhost'):
         defplugs = get_defined_plugins(sd, host=host)
         mapping.update(dict(zip(defplugs, len(defplugs)*[sd])))
     return mapping
+
+def get_gitdirs(workdir, host='localhost'):
+    '''Returns root directory of Git directory for a workin
+    directory. Trivial for the development machine (same). For the
+    (remote) production server this is specific to the deployment
+    setup. Probably needs to be adapted when used elsewhere.
+
+    '''
+   
+    if host == 'localhost':
+        return workdir
+    else:
+        return os.path.join(GITBASE_REMOTE,
+                            '{}.git'.format(os.path.basename(workdir)))
     
-def report(host1, host2='http://localhost:5000'):
+def report(host1, host2):
     A = get_extensions(host=host1)
     B = get_extensions(host=host2)
     
@@ -114,40 +148,24 @@ def report(host1, host2='http://localhost:5000'):
     print('\nVersion {}: {}\n'.format(host2, B['version']))
     print('\nPlugins loaded in {}, not in {}:\n{}'.format(host1, host2, onlyA))
     print('\nPlugins loaded in {}, not in {}:\n{}'.format(host2, host1, onlyB))
-    #hostname1 = re.search(r'
-    # CONTINUE HERE
-    mapA = plugin_src_map(host1)
-    mapB = plugin_src_map(host2)
+    url2hostpat = r'https?://(?P<host>.*?)(:[0-9]{1,5}$|$)'
+    hostnameA = re.subn(url2hostpat, '\g<host>', host1)[0]
+    hostnameB = re.subn(url2hostpat, '\g<host>', host2)[0]
+    mapA = plugin_src_map(hostnameA)
+    mapB = plugin_src_map(hostnameB)
+    for p in AandB:
+        commitA = get_commit(mapA[p], host=hostnameA)
+        commitB = get_commit(mapB[p], host=hostnameB)
+        if commitA != commitB:
+            print('Different checked out versions for {}:\n'.format(p))
+            print('{}: {}\n'.format(hostnameA, commitA))
+            print('{}: {}\n'.format(hostnameB, commitB))
 
+if __name__ == "__main__":
+    args = docopt(__doc__)
+    print(args['<host1>'])
+    report(args['<host1>'], args['<host2>'] or 'http://localhost:5000')
 
-    # for p in AandB:
-    #     print(p)
-    #     srcdirA = mapA[p]
-    #     commit = get_commit(srcdirA, host1)
-    #     print(commit)
-
-report('https://data.eawag.ch')
-
-          
-
-# basedir = '/home/vonwalha/Ckan/ckan/lib/default/src/ckan/'
-basedir = '/usr/lib/ckan/default/src/ckan'
-defplugsl = get_defined_plugins(basedir, host='localhost')
-defplugsr = get_defined_plugins(basedir, host='eaw-ckan-prod1')
-
-
-local_srcdirs = get_srcdirs()
-remote_srcdirs = get_srcdirs('eaw-ckan-prod1')
-
-res = plugin_src_map('eaw-ckan-prod1')
-
-
-# NEXT : allow alternative definition of entry_points, as in ckanext-scheming.
-# Prepare dict as: { plugin-name: (srcdir, commit) }
-# Read actually loaded plugins
-# Filter directories to include only loaded plugins
-# Compare loaded plugins: report
-# For corresponding plugins, compare commit, report.
 
 
 
