@@ -1,14 +1,10 @@
 # _*_ coding: utf-8 _*_
 
-
 """compare_install.py
 
-Compares set of modules loaded on the development machine with those of
-the deployment server. Also compares the git revison of plugins that are loaded
-by both apps.
-
-TODO: Optionally not only compare revisions of plugins but also of non-plugin
-modules.
+Compares set of modules loaded in two CKAN instances on two different machines.
+Useful to compare deployment- with development environment. Also compares the
+git revison of plugins that are loaded by both apps.
 
 Usage: compare_install.py <host1> [<host2>]
 
@@ -16,10 +12,26 @@ Arguments:
 <host1>:   First machine in URL notation, e.g. "https://remote-server.eawag.ch".
 <host2>:   Second machine in URL notation [default: http://localhost:5000]
     
-Assumption: We are in the CKAN virtualenv and all hosts involved are reachable
-with passwordless ssh.
+Assumptions:
 
-You might want to modify GITBASE_REMOTE.
++ We are in the CKAN virtualenv and all hosts involved are reachable
+  with passwordless ssh.
+
++ On the remote (deployment) server exists a directory GITBASE_REMOTE under
+  which all (bare) git repositories for ckan core and the plugins are stored.
+  The version that is checked out here is the deployed version.
+
+You might want to set the constant GITBASE_REMOTE to a different path.
+
+To temporarily set GITBASE_REMOTE or use different GITBASE_REMOTE for
+host1 and host2 set environment variable(s) GITBASE_REMOTE_<normalized_hostname>.
+<normalized_hostname> is the hostname this path refers to, where all
+characters are uppercase and all non-alphanumerical characters have been replaced
+with an underscore ("_").
+
+Example:
+GITBASE_REMOTE_DEPLOY_SERV=/home/Ckan/ckan/git python compare_install.py \
+https://deploy-serv.mydomain.tld http://localhost:5000
 
 """
 
@@ -124,7 +136,7 @@ def plugin_src_map(host='localhost'):
     return mapping
 
 def get_gitdirs(workdir, host='localhost'):
-    '''Returns root directory of Git directory for a workin
+    '''Returns root directory of Git directory for a working
     directory. Trivial for the development machine (same). For the
     (remote) production server this is specific to the deployment
     setup. Probably needs to be adapted when used elsewhere.
@@ -134,7 +146,11 @@ def get_gitdirs(workdir, host='localhost'):
     if host == 'localhost':
         return workdir
     else:
-        return os.path.join(GITBASE_REMOTE,
+        gitbase_remote_envvar = re.sub(
+            '[^0-9a-zA-Z]', '_',
+            'GITBASE_REMOTE_' + host.split('.')[0].upper())
+        gitbase_remote = os.environ.get(gitbase_remote_envvar, GITBASE_REMOTE)
+        return os.path.join(gitbase_remote,
                             '{}.git'.format(os.path.basename(workdir)))
     
 def report(host1, host2):
@@ -163,7 +179,6 @@ def report(host1, host2):
 
 if __name__ == "__main__":
     args = docopt(__doc__)
-    print(args['<host1>'])
     report(args['<host1>'], args['<host2>'] or 'http://localhost:5000')
 
 
